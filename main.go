@@ -26,6 +26,12 @@ type Person struct {
 	Password  string `json:"password" form:"password"`
 }
 
+// Response on error
+type Response struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
 const (
 	dbName = "gotest"
 	dbPass = "root"
@@ -99,15 +105,22 @@ func login(c echo.Context) error {
 		log.Debug("Username ", u.Username)
 		log.Debug("Password ", u.Password)
 		row := connection.QueryRow("SELECT * FROM person WHERE first_name=?", u.Username)
+		log.Debug(row)
 
 		selERR := row.Scan(&person.ID, &person.Firstname, &person.Lastname, &person.Username, &person.Password)
 
 		if selERR != nil {
 			log.Error("Query Error ", selERR)
-		}
-		log.Debug("person ", person)
+			res := Response{Code: http.StatusUnauthorized, Message: "username or password incorrect"}
+			ret = c.JSON(http.StatusUnauthorized, res)
+			// ret = selERR
+		} else {
+			log.Debug("person ", person)
 
-		ret = c.JSON(http.StatusOK, person)
+			log.Debug(person != nil)
+
+			ret = c.JSON(http.StatusOK, person)
+		}
 	}
 
 	return ret
