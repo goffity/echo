@@ -3,23 +3,48 @@ package main
 import (
 	"net/http"
 	"os"
-
-	"github.com/op/go-logging"
+	"webframework_echo/db"
 
 	"github.com/labstack/echo"
+	"github.com/op/go-logging"
+
+	_ "github.com/go-sql-driver/mysql"
 )
 
-type User struct {
+// login request
+type loginRequest struct {
 	Username string `json:"username" form:"name"`
-	Password string `json:"pwd" form:"pwd"`
+	Password string `json:"password" form:"password"`
 }
+
+// Person is person object
+type Person struct {
+	ID        int    `json:"id" form:"id"`
+	Firstname string `json:"firstname" form:"firstname"`
+	Lastname  string `json:"lastname" form:"lastname"`
+	Username  string `json:"username" form:"username"`
+	Password  string `json:"password" form:"password"`
+}
+
+// Response on error
+type Response struct {
+	Code    int    `json:"code"`
+	Message string `json:"message"`
+}
+
+const (
+	dbName = "gotest"
+	dbPass = "root"
+	dbHost = "localhost"
+	dbPort = "3307"
+)
 
 var log = logging.MustGetLogger("API")
 var format = logging.MustStringFormatter(
 	`%{color}%{time:15:04:05.000} %{shortfunc} ▶ %{level:.4s} %{id:03x}%{color:reset} %{message}`,
 )
 
-func main() {
+func initLog() {
 	// For demo purposes, create two backend for os.Stderr.
 	backend1 := logging.NewLogBackend(os.Stderr, "", 0)
 	backend2 := logging.NewLogBackend(os.Stderr, "", 0)
@@ -35,6 +60,11 @@ func main() {
 
 	// Set the backends to be used.
 	logging.SetBackend(backend1Leveled, backend2Formatter)
+}
+
+func main() {
+
+	initLog()
 
 	e := echo.New()
 
@@ -52,13 +82,45 @@ func login(c echo.Context) error {
 	log.Info("login")
 	var ret error
 
-	u := new(User)
+	u := new(loginRequest)
+	person := new(Person)
 
 	if err := c.Bind(u); err != nil {
-		log.Panic(err)
+		log.Error(err)
 		ret = err
 	} else {
-		ret = c.JSON(http.StatusOK, u)
+
+		connection, errConnection := db.GetDatabaseConnection("root", "root", "127.0.0.1", "3307", "gotest")
+
+		if errConnection != nil {
+			log.Fatal(errConnection)
+		}
+		defer connection.Close()
+
+		errConnection = connection.Ping()
+		if errConnection != nil {
+			log.Fatal(errConnection)
+		}
+
+		log.Debug("Username ", u.Username)
+		log.Debug("Password ", u.Password)
+		row := connection.QueryRow("SELECT * FROM person WHERE first_name=?", u.Username)
+		log.Debug(row)
+
+		selERR := row.Scan(&person.ID, &person.Firstname, &person.Lastname, &person.Username, &person.Password)
+
+		if selERR != nil {
+			log.Error("Query Error ", selERR)
+			res := Response{Code: http.StatusUnauthorized, Message: "username or password incorrect"}
+			ret = c.JSON(http.StatusUnauthorized, res)
+			// ret = selERR
+		} else {
+			log.Debug("person ", person)
+
+			log.Debug(person != nil)
+
+			ret = c.JSON(http.StatusOK, person)
+		}
 	}
 
 	return ret
